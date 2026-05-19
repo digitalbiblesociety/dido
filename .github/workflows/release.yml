@@ -1,0 +1,137 @@
+# On a `v*` tag push, build dido binaries for each (OS, arch) and
+# attach them to a GitHub Release. Each archive holds a `go-aeneas`
+# binary plus LICENSE; Windows additionally ships `aeneas-cli.exe`
+# (SAB's Windows-side filename).
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version label baked into the archive name (e.g. v0.1.0-dev)"
+        required: true
+        default: v0.1.0-dev
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.os }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # lipo + codesign need to run on a real macOS runner.
+          - os: darwin
+            arch: universal
+            runner: macos-14
+          - os: linux
+            arch: amd64
+            runner: ubuntu-latest
+          - os: linux
+            arch: arm64
+            runner: ubuntu-latest
+          - os: windows
+            arch: amd64
+            runner: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build darwin/universal
+        if: matrix.os == 'darwin'
+        run: bash packaging/sab/build.sh mac
+      - name: Stage darwin artifact
+        if: matrix.os == 'darwin'
+        run: |
+          mkdir -p stage/darwin-universal
+          cp packaging/sab/dist/mac/go-aeneas stage/darwin-universal/
+          cp LICENSE stage/darwin-universal/
+          ARCHIVE="dido_${{ steps.ver.outputs.tag }}_darwin_universal.tar.gz"
+          tar -C stage -czf "$ARCHIVE" darwin-universal
+          echo "archive=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Build linux
+        if: matrix.os == 'linux'
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p stage/linux-${{ matrix.arch }}
+          go build -trimpath -ldflags="-s -w" \
+            -o stage/linux-${{ matrix.arch }}/go-aeneas ./cmd/dido
+          cp LICENSE stage/linux-${{ matrix.arch }}/
+          ARCHIVE="dido_${{ steps.ver.outputs.tag }}_linux_${{ matrix.arch }}.tar.gz"
+          tar -C stage -czf "$ARCHIVE" linux-${{ matrix.arch }}
+          echo "archive=$ARCHIVE" >> "$GITHUB_ENV"
+
+      # SAB on Windows looks for `aeneas-cli.exe`; ship both names.
+      - name: Build windows/amd64
+        if: matrix.os == 'windows'
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p stage/windows-amd64
+          go build -trimpath -ldflags="-s -w" \
+            -o stage/windows-amd64/dido.exe ./cmd/dido
+          cp stage/windows-amd64/dido.exe stage/windows-amd64/aeneas-cli.exe
+          cp LICENSE stage/windows-amd64/
+          ARCHIVE="dido_${{ steps.ver.outputs.tag }}_windows_amd64.zip"
+          (cd stage && zip -r "../$ARCHIVE" windows-amd64)
+          echo "archive=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.archive }}
+          path: ${{ env.archive }}
+          if-no-files-found: error
+
+  release:
+    name: release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create / update release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true

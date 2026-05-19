@@ -1,0 +1,22 @@
+# Compiled binary artefacts placed at the repo root.
+/dido
+/dido-*
+
+# macOS Finder metadata.
+.DS_Store
+
+# Go test, coverage, and profiling output.
+*.test
+*.out
+*.prof
+coverage.html
+
+# Editor / IDE local files.
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local environment overrides.
+.env
+.env.local
