@@ -196,7 +196,8 @@ func Execute(audioPath string, fragments []*text.Fragment, tc TaskConfig, rc con
 	src := func() ([]float64, uint32, error) {
 		return ffmpeg.Decode(audioPath, rc.FFMpegSampleRate, rc.FFMpegPath)
 	}
-	return executeWithSource(src, timing.Zero, fragments, tc, rc, true)
+	// nil cache: one call, nothing to amortise.
+	return executeWithSource(src, timing.Zero, fragments, tc, rc, true, nil)
 }
 
 // sampleSource returns mono float64 audio samples at the requested sample
@@ -222,6 +223,9 @@ func staticSamples(samples []float64, rate uint32) sampleSource {
 // The sample source is invoked inside the real-MFCC goroutine so that
 // audio decode (when the source is the ffmpeg fast path) runs in parallel
 // with text synthesis on the TTS goroutine.
+//
+// cache may be nil. When non-nil it shares *mfcc.Compiled across
+// recursive ExecuteMultilevel calls.
 func executeWithSource(
 	src sampleSource,
 	audioOffset timing.TimeValue,
@@ -229,6 +233,7 @@ func executeWithSource(
 	tc TaskConfig,
 	rc config.RuntimeConfig,
 	allowHeadTail bool,
+	cache *compiledCache,
 ) (*syncmap.SyncMap, error) {
 	if len(fragments) == 0 {
 		return syncmap.NewSyncMap(), nil
@@ -260,7 +265,12 @@ func executeWithSource(
 			audioCh <- audioOut{nil, fmt.Errorf("pipeline: audio decode: %w", err)}
 			return
 		}
-		am, err := audiomfcc.FromSamples(samples, rate, mp)
+		c, err := cache.get(mp, rate)
+		if err != nil {
+			audioCh <- audioOut{nil, fmt.Errorf("pipeline: real MFCC compile: %w", err)}
+			return
+		}
+		am, err := audiomfcc.FromSamplesCompiled(samples, c)
 		if err != nil {
 			audioCh <- audioOut{nil, fmt.Errorf("pipeline: real MFCC: %w", err)}
 			return
@@ -293,7 +303,12 @@ func executeWithSource(
 			synthCh <- synthOut{err: fmt.Errorf("pipeline: synthesis produced no audio")}
 			return
 		}
-		sm, err := audiomfcc.FromSamples(sr.Samples, sr.SampleRate, mp)
+		c, err := cache.get(mp, sr.SampleRate)
+		if err != nil {
+			synthCh <- synthOut{err: fmt.Errorf("pipeline: synth MFCC compile: %w", err)}
+			return
+		}
+		sm, err := audiomfcc.FromSamplesCompiled(sr.Samples, c)
 		if err != nil {
 			synthCh <- synthOut{err: fmt.Errorf("pipeline: synth MFCC: %w", err)}
 			return
@@ -420,7 +435,11 @@ func ExecuteMultilevel(audioPath string, tf *text.TextFile, tc TaskConfig, rc co
 		return s, r, nil
 	}
 
-	topSM, err := executeWithSource(src, timing.Zero, topFrags, tc, rc, true)
+	// Shared across the recursion: siblings at each level reuse one
+	// *mfcc.Compiled per (params, rate) instead of rebuilding per call.
+	cache := newCompiledCache()
+
+	topSM, err := executeWithSource(src, timing.Zero, topFrags, tc, rc, true, cache)
 	if err != nil {
 		return nil, err
 	}
@@ -452,7 +471,7 @@ func ExecuteMultilevel(audioPath string, tf *text.TextFile, tc TaskConfig, rc co
 
 		if maxLevel >= 2 && len(topNode.ChildrenNotEmpty()) > 0 {
 			if err := alignChildren(parentNode, topNode, samples, rate, sf,
-				tc, rc, 2, maxLevel); err != nil {
+				tc, rc, 2, maxLevel, cache); err != nil {
 				return nil, err
 			}
 		}
@@ -465,7 +484,8 @@ func ExecuteMultilevel(audioPath string, tf *text.TextFile, tc TaskConfig, rc co
 // SyncMapFragments are attached to outParent.
 //
 // level is the current depth being aligned (2 = sentences, 3 = phrases,
-// 4 = words). maxLevel caps recursion.
+// 4 = words). maxLevel caps recursion. cache is shared across the whole
+// ExecuteMultilevel call so siblings reuse one *mfcc.Compiled.
 func alignChildren(
 	outParent *syncmap.Tree,
 	textParent *syncmap.Tree,
@@ -475,6 +495,7 @@ func alignChildren(
 	tc TaskConfig,
 	rc config.RuntimeConfig,
 	level, maxLevel int,
+	cache *compiledCache,
 ) error {
 	childNodes := textParent.ChildrenNotEmpty()
 	childFrags := make([]*text.Fragment, 0, len(childNodes))
@@ -512,7 +533,7 @@ func alignChildren(
 	childRC.SetGranularity(level)
 
 	childSM, err := executeWithSource(staticSamples(childSamples, rate), audioOffset,
-		childFrags, tc, childRC, false /* no head/tail at inner levels */)
+		childFrags, tc, childRC, false /* no head/tail at inner levels */, cache)
 	if err != nil {
 		return fmt.Errorf("pipeline: level %d alignment for %q: %w",
 			level, parentFrag.Identifier(), err)
@@ -538,7 +559,7 @@ func alignChildren(
 
 		if level < maxLevel && len(childTextNode.ChildrenNotEmpty()) > 0 {
 			if err := alignChildren(childOutNode, childTextNode, samples, rate, csf,
-				tc, rc, level+1, maxLevel); err != nil {
+				tc, rc, level+1, maxLevel, cache); err != nil {
 				return err
 			}
 		}

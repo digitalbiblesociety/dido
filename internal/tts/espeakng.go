@@ -1,6 +1,7 @@
 package tts
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -197,28 +198,26 @@ func SynthesizeMultipleWith(fragments []Fragment, binaryPath string, workers int
 }
 
 // synthesizeOne invokes espeak-ng for a single (voice, text) pair and returns
-// the normalised PCM float64 samples from the output WAV.
+// the normalised PCM float64 samples from the output WAV. WAV is piped on
+// stdout and decoded via audio.OpenBytes (which clamps eSpeak-ng's
+// ~0x7FFFFFFF streaming-header sentinels to the actual buffer length).
 func synthesizeOne(binary, voice, text string) ([]float64, error) {
-	tmp, err := os.CreateTemp("", "aeneas-tts-*.wav")
-	if err != nil {
-		return nil, fmt.Errorf("tts: create temp WAV: %w", err)
-	}
-	tmpPath := tmp.Name()
-	tmp.Close()
-	defer os.Remove(tmpPath)
-
-	cmd := exec.Command(binary, "-v", voice, "-w", tmpPath)
+	cmd := exec.Command(binary, "-v", voice, "--stdout")
 	cmd.Stdin = strings.NewReader(text)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("tts: %s: %w\n%s", binary, err, out)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("tts: %s: %w\n%s", binary, err, stderr.Bytes())
 	}
-
-	wf, err := audio.Open(tmpPath)
+	if stdout.Len() == 0 {
+		return nil, fmt.Errorf("tts: %s produced no audio (stderr: %s)", binary, stderr.Bytes())
+	}
+	wf, err := audio.OpenBytes(stdout.Bytes())
 	if err != nil {
-		return nil, fmt.Errorf("tts: open WAV: %w", err)
+		return nil, fmt.Errorf("tts: parse WAV: %w", err)
 	}
 	defer wf.Close()
-
 	samples, err := wf.ReadAllSamples()
 	if err != nil {
 		return nil, fmt.Errorf("tts: read WAV: %w", err)

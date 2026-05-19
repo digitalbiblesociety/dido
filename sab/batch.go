@@ -417,19 +417,17 @@ func runBatchParallel(plans []bookPlan, outDir string, c cliFlags,
 
 		bc := j.book
 
-		// First worker to touch this book emits book_start. This
-		// matters in the parallel path because a 66-book batch might
-		// not actually start the last few books before the abort.
+		// First worker to touch this book emits book_start. Hold bc.mu
+		// through the Send so siblings can't race past and emit
+		// chapter_done before the book_start that announces them.
 		bc.mu.Lock()
 		if !bc.started {
 			bc.started = true
 			bc.startedAt = time.Now()
-			bc.mu.Unlock()
 			sink.Send(progressEvent{Kind: "book_start",
 				Book: bc.plan.book, NumChap: bc.chapsTotal})
-		} else {
-			bc.mu.Unlock()
 		}
+		bc.mu.Unlock()
 
 		if c.resume {
 			timingPath := filepath.Join(outDir, j.ct.Stem+"-timing.txt")

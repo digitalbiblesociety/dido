@@ -3,6 +3,7 @@
 package audio
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -30,9 +31,9 @@ type WAVInfo struct {
 	BytesPerSample uint32
 }
 
-// WAVFile wraps an *os.File together with its parsed header.
+// WAVFile wraps an io.ReadSeekCloser together with its parsed header.
 type WAVFile struct {
-	f    *os.File
+	f    io.ReadSeekCloser
 	Info WAVInfo
 }
 
@@ -51,7 +52,41 @@ func Open(path string) (*WAVFile, error) {
 	return wf, nil
 }
 
-// Close closes the underlying file.
+// OpenBytes parses a mono PCM WAV from an in-memory byte buffer; Close
+// is a no-op.
+//
+// Streaming WAV producers (e.g. espeak-ng --stdout) emit sentinel chunk
+// sizes (~0x7FFFFFFF) because the final length isn't known when the
+// header is written. OpenBytes trusts len(b) over the header and clamps
+// NumSamples to (len(b) - DataStart) / BytesPerSample whenever the
+// header overstates the payload.
+func OpenBytes(b []byte) (*WAVFile, error) {
+	if len(b) == 0 {
+		return nil, errors.New("audio: empty buffer")
+	}
+	wf := &WAVFile{f: nopCloser{bytes.NewReader(b)}}
+	if err := wf.readHeader(); err != nil {
+		return nil, err
+	}
+	available := int64(len(b)) - wf.Info.DataStart
+	if available < 0 {
+		available = 0
+	}
+	if int64(wf.Info.DataChunkSize) > available {
+		wf.Info.DataChunkSize = uint32(available)
+		denom := uint32(wf.Info.NumChannels) * wf.Info.BytesPerSample
+		if denom > 0 {
+			wf.Info.NumSamples = wf.Info.DataChunkSize / denom
+		}
+	}
+	return wf, nil
+}
+
+type nopCloser struct{ io.ReadSeeker }
+
+func (nopCloser) Close() error { return nil }
+
+// Close closes the underlying file. No-op for in-memory readers.
 func (wf *WAVFile) Close() error { return wf.f.Close() }
 
 // ReadSamples reads number samples starting at fromSample into dst (must be pre-allocated).

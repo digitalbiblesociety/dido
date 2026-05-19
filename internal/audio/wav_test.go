@@ -135,6 +135,89 @@ func build8BitWAV(t *testing.T, sampleRate uint32, samples []byte) []byte {
 	return buf.Bytes()
 }
 
+// TestOpenBytesRoundTrip verifies in-memory WAV decode reproduces what
+// WriteMonoPCM16 wrote.
+func TestOpenBytesRoundTrip(t *testing.T) {
+	sr := uint32(22050)
+	n := 1000
+	orig := make([]float64, n)
+	for i := range orig {
+		orig[i] = math.Sin(2 * math.Pi * 440.0 * float64(i) / float64(sr))
+	}
+	var buf bytes.Buffer
+	if err := WriteMonoPCM16(&buf, sr, orig); err != nil {
+		t.Fatal(err)
+	}
+	wf, err := OpenBytes(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wf.Close()
+	if wf.Info.SampleRate != sr {
+		t.Errorf("SampleRate: got %d, want %d", wf.Info.SampleRate, sr)
+	}
+	if int(wf.Info.NumSamples) != n {
+		t.Errorf("NumSamples: got %d, want %d", wf.Info.NumSamples, n)
+	}
+	got, err := wf.ReadAllSamples()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != n {
+		t.Fatalf("got %d samples, want %d", len(got), n)
+	}
+}
+
+// TestOpenBytesStreamingHeader checks the espeak-ng `--stdout` case: a
+// well-formed RIFF header but sentinel chunk sizes that overstate the
+// payload. OpenBytes must clamp NumSamples to the actual buffer length.
+func TestOpenBytesStreamingHeader(t *testing.T) {
+	const sr uint32 = 22050
+	const realSamples = 100
+	var buf bytes.Buffer
+	dataSize := uint32(realSamples) * 2
+	const fmtSize = uint32(16)
+	// ~2 GB sentinel for both ChunkSize and DataChunkSize, mirroring
+	// what espeak-ng --stdout writes when the final length is unknown.
+	const sentinel uint32 = 0x7FFFFF24
+	buf.WriteString("RIFF")
+	binary.Write(&buf, binary.LittleEndian, sentinel)
+	buf.WriteString("WAVE")
+	buf.WriteString("fmt ")
+	binary.Write(&buf, binary.LittleEndian, fmtSize)
+	binary.Write(&buf, binary.LittleEndian, uint16(WAVFormatPCM))
+	binary.Write(&buf, binary.LittleEndian, uint16(1))
+	binary.Write(&buf, binary.LittleEndian, sr)
+	binary.Write(&buf, binary.LittleEndian, sr*2)
+	binary.Write(&buf, binary.LittleEndian, uint16(2))
+	binary.Write(&buf, binary.LittleEndian, uint16(16))
+	buf.WriteString("data")
+	binary.Write(&buf, binary.LittleEndian, sentinel-36)
+	for i := 0; i < realSamples; i++ {
+		binary.Write(&buf, binary.LittleEndian, int16(i))
+	}
+	if got := buf.Len() - 44; got != int(dataSize) {
+		t.Fatalf("setup: dataSize sanity check failed: data bytes=%d want=%d", got, dataSize)
+	}
+
+	wf, err := OpenBytes(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wf.Close()
+	if wf.Info.NumSamples != realSamples {
+		t.Errorf("NumSamples: got %d, want %d (header sentinel must be clamped)",
+			wf.Info.NumSamples, realSamples)
+	}
+	samples, err := wf.ReadAllSamples()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(samples) != realSamples {
+		t.Errorf("len(samples): got %d, want %d", len(samples), realSamples)
+	}
+}
+
 // TestRead8BitUnsigned verifies the unsigned-byte → float64 conversion for
 // 8-bit PCM WAV. The spec (Microsoft RIFF / WAVE) defines 8-bit samples as
 // unsigned: byte 0 = max negative, byte 128 = silence, byte 255 = max
