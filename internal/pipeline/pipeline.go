@@ -193,21 +193,37 @@ func (tc *TaskConfig) set(key, val string) bool {
 //
 // Serialisation of the resulting SyncMap is the caller's responsibility.
 func Execute(audioPath string, fragments []*text.Fragment, tc TaskConfig, rc config.RuntimeConfig) (*syncmap.SyncMap, error) {
-	samples, rate, err := ffmpeg.Decode(audioPath, rc.FFMpegSampleRate, rc.FFMpegPath)
-	if err != nil {
-		return nil, fmt.Errorf("pipeline: audio decode: %w", err)
+	src := func() ([]float64, uint32, error) {
+		return ffmpeg.Decode(audioPath, rc.FFMpegSampleRate, rc.FFMpegPath)
 	}
-	return executeOnSamples(samples, rate, timing.Zero, fragments, tc, rc, true)
+	return executeWithSource(src, timing.Zero, fragments, tc, rc, true)
 }
 
-// executeOnSamples runs the alignment from already-decoded audio samples.
-// audioOffset is added to every boundary time in the returned syncmap so
-// the result refers to the original (un-sliced) audio. allowHeadTail
-// gates the SD detector — true at top-level, false during multi-level
-// recursion (the parent's window already trims silence).
-func executeOnSamples(
-	samples []float64,
-	rate uint32,
+// sampleSource returns mono float64 audio samples at the requested sample
+// rate. It is called inside the audio-path goroutine so that slow producers
+// (e.g. ffmpeg) overlap with TTS synthesis instead of serialising in front
+// of it.
+type sampleSource func() (samples []float64, rate uint32, err error)
+
+// staticSamples wraps an already-decoded buffer as a sampleSource. Used by
+// the multi-level recursive path where the parent has already produced
+// per-child sample slices.
+func staticSamples(samples []float64, rate uint32) sampleSource {
+	return func() ([]float64, uint32, error) { return samples, rate, nil }
+}
+
+// executeWithSource runs the alignment given a sample source (lazy decode
+// or pre-decoded buffer) and an audio offset. audioOffset is added to every
+// boundary time in the returned syncmap so the result refers to the
+// original (un-sliced) audio. allowHeadTail gates the SD detector — true
+// at top-level, false during multi-level recursion (the parent's window
+// already trims silence).
+//
+// The sample source is invoked inside the real-MFCC goroutine so that
+// audio decode (when the source is the ffmpeg fast path) runs in parallel
+// with text synthesis on the TTS goroutine.
+func executeWithSource(
+	src sampleSource,
 	audioOffset timing.TimeValue,
 	fragments []*text.Fragment,
 	tc TaskConfig,
@@ -232,13 +248,18 @@ func executeOnSamples(
 		return nil, fmt.Errorf("pipeline: espeak path: %w", err)
 	}
 
-	// ── Concurrent path A: decoded samples → real-wave MFCC ──────────────────
+	// ── Concurrent path A: decode (lazy) → real-wave MFCC ────────────────────
 	type audioOut struct {
 		mfcc *audiomfcc.AudioMFCC
 		err  error
 	}
 	audioCh := make(chan audioOut, 1)
 	go func() {
+		samples, rate, err := src()
+		if err != nil {
+			audioCh <- audioOut{nil, fmt.Errorf("pipeline: audio decode: %w", err)}
+			return
+		}
 		am, err := audiomfcc.FromSamples(samples, rate, mp)
 		if err != nil {
 			audioCh <- audioOut{nil, fmt.Errorf("pipeline: real MFCC: %w", err)}
@@ -352,12 +373,6 @@ func executeOnSamples(
 // hierarchy-aware formats (JSON, XML, SMIL/TTML at multi-level) preserve
 // the structure.
 func ExecuteMultilevel(audioPath string, tf *text.TextFile, tc TaskConfig, rc config.RuntimeConfig) (*syncmap.SyncMap, error) {
-	// Decode audio once up front; child levels reuse the same samples.
-	samples, rate, err := ffmpeg.Decode(audioPath, rc.FFMpegSampleRate, rc.FFMpegPath)
-	if err != nil {
-		return nil, fmt.Errorf("pipeline: audio decode: %w", err)
-	}
-
 	// Resolve the tree depth we will recurse through. tc.Granularity
 	// follows aeneas's 1/2/3 dial:
 	//   1 → depth 1 (paragraph only — single-level alignment)
@@ -388,7 +403,24 @@ func ExecuteMultilevel(audioPath string, tf *text.TextFile, tc TaskConfig, rc co
 		return syncmap.NewSyncMap(), nil
 	}
 
-	topSM, err := executeOnSamples(samples, rate, timing.Zero, topFrags, tc, rc, true)
+	// Decode lazily: the source closure runs inside the level-1 audio
+	// goroutine in parallel with TTS, and captures the decoded buffer so
+	// child levels can reuse it without re-decoding.
+	var (
+		samples []float64
+		rate    uint32
+	)
+	src := func() ([]float64, uint32, error) {
+		s, r, err := ffmpeg.Decode(audioPath, rc.FFMpegSampleRate, rc.FFMpegPath)
+		if err != nil {
+			return nil, 0, err
+		}
+		samples = s
+		rate = r
+		return s, r, nil
+	}
+
+	topSM, err := executeWithSource(src, timing.Zero, topFrags, tc, rc, true)
 	if err != nil {
 		return nil, err
 	}
@@ -479,7 +511,7 @@ func alignChildren(
 	childRC := rc
 	childRC.SetGranularity(level)
 
-	childSM, err := executeOnSamples(childSamples, rate, audioOffset,
+	childSM, err := executeWithSource(staticSamples(childSamples, rate), audioOffset,
 		childFrags, tc, childRC, false /* no head/tail at inner levels */)
 	if err != nil {
 		return fmt.Errorf("pipeline: level %d alignment for %q: %w",
