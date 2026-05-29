@@ -75,7 +75,9 @@ func runBatchWith(path string, runner taskRunner, workers int, logw io.Writer) e
 		return fmt.Errorf("batch file %q contains no tasks", path)
 	}
 
-	fmt.Fprintf(logw, "Batch file: %s (%d task%s)\n",
+	w := &syncWriter{w: logw}
+
+	fmt.Fprintf(w, "Batch file: %s (%d task%s)\n",
 		path, len(tasks), plural(len(tasks)))
 
 	if workers < 1 {
@@ -109,11 +111,11 @@ func runBatchWith(path string, runner taskRunner, workers int, logw io.Writer) e
 					failed.Add(1)
 					firstErr.set(fmt.Errorf("task %q: %w", t.Description, err))
 					aborted.Store(true)
-					fmt.Fprintf(logw, "  FAIL  %s — %v\n", t.Description, err)
+					fmt.Fprintf(w, "  FAIL  %s — %v\n", t.Description, err)
 					continue
 				}
 				okCount.Add(1)
-				fmt.Fprintf(logw, "  OK    %s  (%s)\n",
+				fmt.Fprintf(w, "  OK    %s  (%s)\n",
 					t.Description, time.Since(ts).Round(time.Millisecond))
 			}
 		}()
@@ -128,7 +130,7 @@ func runBatchWith(path string, runner taskRunner, workers int, logw io.Writer) e
 	close(jobs)
 	wg.Wait()
 
-	fmt.Fprintf(logw, "Done in %s. %d ok, %d failed, %d skipped (post-abort).\n",
+	fmt.Fprintf(w, "Done in %s. %d ok, %d failed, %d skipped (post-abort).\n",
 		time.Since(start).Round(time.Second),
 		okCount.Load(), failed.Load(),
 		int64(len(tasks))-okCount.Load()-failed.Load())
@@ -160,6 +162,19 @@ func plural(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+// syncWriter serialises the batch workers' concurrent log writes so
+// lines don't interleave or race.
+type syncWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (s *syncWriter) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.w.Write(p)
 }
 
 // atomicErr is a first-writer-wins error holder.

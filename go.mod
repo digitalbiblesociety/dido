@@ -2,6 +2,10 @@ module github.com/digitalbiblesociety/dido
 
 go 1.26
 
+// Patched toolchain: go1.26.0's stdlib carries GO-2026-4602, reachable
+// here via filepath.WalkDir. `go 1.26` above stays the language floor.
+toolchain go1.26.1
+
 require (
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10

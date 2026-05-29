@@ -59,7 +59,7 @@ jobs:
 
       - name: Build darwin/universal
         if: matrix.os == 'darwin'
-        run: bash packaging/sab/build.sh mac
+        run: VERSION="${{ steps.ver.outputs.tag }}" bash packaging/sab/build.sh mac
       - name: Stage darwin artifact
         if: matrix.os == 'darwin'
         run: |
@@ -78,7 +78,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           mkdir -p stage/linux-${{ matrix.arch }}
-          go build -trimpath -ldflags="-s -w" \
+          go build -trimpath -ldflags="-s -w -X main.version=${{ steps.ver.outputs.tag }}" \
             -o stage/linux-${{ matrix.arch }}/go-aeneas ./cmd/dido
           cp LICENSE stage/linux-${{ matrix.arch }}/
           ARCHIVE="dido_${{ steps.ver.outputs.tag }}_linux_${{ matrix.arch }}.tar.gz"
@@ -94,7 +94,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           mkdir -p stage/windows-amd64
-          go build -trimpath -ldflags="-s -w" \
+          go build -trimpath -ldflags="-s -w -X main.version=${{ steps.ver.outputs.tag }}" \
             -o stage/windows-amd64/dido.exe ./cmd/dido
           cp stage/windows-amd64/dido.exe stage/windows-amd64/aeneas-cli.exe
           cp LICENSE stage/windows-amd64/

@@ -24,7 +24,9 @@ func isHierarchicalFormat(f text.Format) bool {
 	return f == text.FormatMPlain || f == text.FormatMUnparsed
 }
 
-const version = "0.1.0-dev"
+// version is stamped at release time via -ldflags "-X main.version=<tag>".
+// Must stay a var, not a const — the linker cannot rewrite a const.
+var version = "0.1.0-dev"
 
 const usage = `dido %s — forced audio/text alignment
 

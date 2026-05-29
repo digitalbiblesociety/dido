@@ -2,6 +2,11 @@
 /dido
 /dido-*
 
+# Build output: SAB packaging binaries (build.sh) and local bin/.
+# Official prebuilts ship via GitHub Release attachments, not git.
+/bin/
+/packaging/sab/dist/
+
 # macOS Finder metadata.
 .DS_Store
 

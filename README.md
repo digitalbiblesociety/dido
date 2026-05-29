@@ -23,9 +23,32 @@ go build -o dido ./cmd/dido
   output.srt
 ```
 
+Run `./dido --help` for the full list of config keys and output formats.
+
+## Batch mode
+
+Align many tasks from a single JSON file (the schema matches SIL
+go-aeneas / SAB's `AeneasTask`; both a bare array and `{"tasks":[…]}`
+are accepted):
+
+```
+./dido --batch tasks.json
+```
+
+Each task has the fields `description`, `audioFilename`, `phraseFilename`,
+`parameters`, `outputFilename`. The first error aborts the rest of the
+queue.
+
+## Environment
+
+- `DIDO_ESPEAK_NG_PATH` — espeak-ng binary (overridable per-task with `tts_path`).
+- `DIDO_TTS_WORKERS` — cap on parallel TTS subprocesses (0 = NumCPU).
+- `DIDO_BATCH_WORKERS` — parallel tasks in `--batch` mode (default 2; each
+  task already fans MFCC/DTW across NumCPU).
+
 ## Requirements
 
-- **Go ≥ 1.22** to build.
+- **Go ≥ 1.26**
 - **espeak-ng** on `PATH` for TTS synthesis. Override per-task with the
   `tts_path` config key, or globally with the `DIDO_ESPEAK_NG_PATH`
   env var.
@@ -66,17 +89,17 @@ Python or aeneas isn't importable.
 go test ./internal/parity/
 
 # Regenerate the cross-implementation summary table:
-go run ./cmd/parity-report   # writes PARITY_REPORT.md
+go run ./cmd/parity-report   # writes docs/PARITY_REPORT.md
 ```
 
-End-to-end alignment parity on a real-world corpus
-(KJV-Scorby Psalms — 150 chapters, ~4.3 h of audio):
+End-to-end alignment parity on a real-world corpus (KJV-Scorby Psalms —
+150 chapters, ~4.3 h of audio) runs as a Go benchmark. Point it at a
+fixtures directory holding `wav/001.wav … 150.wav` and
+`text/001.txt … 150.txt`:
 
 ```
-# Prepares fixtures, runs both pipelines, prints aggregate drift stats.
-# Defaults assume a specific local path; see the README in the harness
-# directory or set MP3_DIR / USFM_JSON.
-./tools/psalms-parity/run_all.sh
+PSALMS_PARITY_DIR=/path/to/fixtures \
+  go test -run x -bench BenchmarkPsalmsBook ./internal/parity/
 ```
 
 

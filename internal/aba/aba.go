@@ -492,6 +492,15 @@ func applyOffset(frags []fragItem, offset, audioLen timing.TimeValue) {
 		if e.Greater(audioLen) {
 			e = audioLen
 		}
+		// A large offset can push begin past the clamped end (or end below
+		// 0), leaving begin > end — which panics in NewTimeInterval.
+		// Collapse to a zero-length boundary instead of crashing the run.
+		if e.Less(timing.Zero) {
+			e = timing.Zero
+		}
+		if b.Greater(e) {
+			b = e
+		}
 		frags[i].begin = b
 		frags[i].end = e
 	}

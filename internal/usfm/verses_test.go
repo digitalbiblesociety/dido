@@ -1,6 +1,7 @@
 package usfm
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -162,11 +163,14 @@ func TestParseContinuationLines(t *testing.T) {
 	}
 }
 
-// TestParseThaiIsaiah is a smoke test against the real Thai Isaiah
-// USFM file shipped at /Users/jon/Projects/dbs/bibles/source/. Skipped
-// when the file isn't present (CI / fresh checkouts).
+// TestParseThaiIsaiah is a smoke test against a real Thai Isaiah USFM
+// file. Set DIDO_THA_ISA_USFM to its path to run; skipped otherwise
+// (CI / fresh checkouts).
 func TestParseThaiIsaiah(t *testing.T) {
-	path := "/Users/jon/Projects/dbs/bibles/source/THAKJV/usfm/24-ISAthaKJV.usfm"
+	path := os.Getenv("DIDO_THA_ISA_USFM")
+	if path == "" {
+		t.Skip("set DIDO_THA_ISA_USFM=<path to 24-ISAthaKJV.usfm> to run")
+	}
 	verses, err := ParseFile(path)
 	if err != nil {
 		t.Skipf("Thai ISA fixture not available: %v", err)

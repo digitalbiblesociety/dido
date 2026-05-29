@@ -6,8 +6,7 @@ in `dido`. Useful when adding new functionality, debugging
 parity gaps, or hunting down the equivalent of a Python feature.
 
 Layout: paths under `aeneas/aeneas/` on the Python side; paths under
-`internal/` (and `cmd/`) on the Go side. "—" means not yet ported;
-see `IMPROVEMENT_PLANS.md` for the backlog.
+`internal/` (and `cmd/`) on the Go side. "—" means not yet ported.
 
 ## Numeric core
 
@@ -44,7 +43,7 @@ see `IMPROVEMENT_PLANS.md` for the backlog.
 | `ttswrappers/basettswrapper.py`     | `internal/tts/`            | Base class equivalent. |
 | `ttswrappers/espeakttswrapper.py`   | —                          | Classic espeak not supported; Go uses espeak-ng only. |
 | `ttswrappers/espeakngttswrapper.py` | `internal/tts/espeakng.go` | The canonical Go path. |
-| `ttswrappers/festivalttswrapper.py` | —                          | Out of scope (see `plan.md`). |
+| `ttswrappers/festivalttswrapper.py` | —                          | Out of scope. |
 | `ttswrappers/awsttswrapper.py`      | —                          | Out of scope. |
 | `ttswrappers/nuancettswrapper.py`   | —                          | Out of scope. |
 | `ttswrappers/macosttswrapper.py`    | —                          | Out of scope. |
@@ -54,7 +53,7 @@ see `IMPROVEMENT_PLANS.md` for the backlog.
 | Python | Go | Notes |
 |---|---|---|
 | `syncmap/__init__.py` | `internal/syncmap/syncmap.go` | SyncMap top-level type + Fragments / Leaves. |
-| `syncmap/fragment.py` | `internal/syncmap/fragment.go` | SyncMapFragment; typed TextFragment interface (see D1 in IMPROVEMENT_PLANS.md). |
+| `syncmap/fragment.py` | `internal/syncmap/fragment.go` | SyncMapFragment; typed TextFragment interface. |
 | `syncmap/fragmentlist.py` | — (interval algebra subset only) | Full fragment-list helpers not ported. |
 | `tree.py` | `internal/syncmap/tree.go` | Generic levelled tree. |
 | `syncmap/headtailformat.py` | — | |
@@ -71,7 +70,7 @@ see `IMPROVEMENT_PLANS.md` for the backlog.
 | `syncmap/smfeaf.py` | `internal/syncmap/format/xml.go` (formatEAF) | |
 | `syncmap/smfjson.py` | `internal/syncmap/format/json.go` | |
 | `syncmap/smfrbse.py` | `internal/syncmap/format/json.go` (formatRBSE) | |
-| `syncmap/smftextgrid.py` | — | Praat TextGrid not yet ported — see A4 in IMPROVEMENT_PLANS.md. |
+| `syncmap/smftextgrid.py` | — | Praat TextGrid not yet ported. |
 | `syncmap/missingparametererror.py` | — (errors raised via `fmt.Errorf` in callers) | |
 
 ## Time
@@ -114,8 +113,8 @@ see `IMPROVEMENT_PLANS.md` for the backlog.
 | `tools/read_audio.py`, `read_text.py`, `run_sd.py`, `run_vad.py` | — | Diagnostic tools; not yet shipped. |
 | `tools/ffmpeg_wrapper.py`, `ffprobe_wrapper.py` | — | Use `ffmpeg`/`ffprobe` directly. |
 | `tools/convert_syncmap.py` | — | Easy add via `internal/syncmap/format`; not yet shipped. |
-| `tools/plot_waveform.py` | — | Out of scope per `plan.md`. |
-| `tools/download.py` | — | Out of scope per `plan.md`. |
+| `tools/plot_waveform.py` | — | Out of scope. |
+| `tools/download.py` | — | Out of scope. |
 | `tools/hydra.py`, `abstract_cli_program.py` | — | CLI infrastructure not needed in Go (flag/main pattern). |
 
 ## Auto-transliteration (Go-only addition)
@@ -165,4 +164,4 @@ romanisation of text whose language has no native eSpeak-ng voice.
 | `test_adjustboundaryalgorithm.py` | `internal/aba/aba_test.go` |
 | `test_globalfunctions.py`, `test_logger.py` | — |
 | `test_idsortingalgorithm.py` | `internal/language/idsort_test.go` |
-| End-to-end (`test_task.py`, `test_job.py`) | `tools/psalms-parity/` |
+| End-to-end (`test_task.py`, `test_job.py`) | `internal/parity/psalms_book_bench_test.go` |

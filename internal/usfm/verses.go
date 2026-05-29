@@ -270,8 +270,8 @@ func structuralEmptyLine(trimmed string) bool {
 	return rest == "" && structuralMarkers[tok]
 }
 
-// Pre-compiled regexes for the USFM stripper. These mirror what
-// extract_verses.py does in tools/psalms-parity/.
+// Pre-compiled regexes for the USFM stripper: reduce raw USFM to plain
+// verse text (footnotes, cross-refs, and character markers removed).
 var (
 	// \f + ... \f* and \x + ... \x* — footnotes and cross-refs, dropped wholesale.
 	reFootnote = regexp.MustCompile(`(?s)\\f\s.*?\\f\*`)

@@ -24,7 +24,7 @@ build_arch() {
   mkdir -p "$(dirname "$out")"
   echo "  building $goos/$goarch → ${out#"$MODULE_ROOT/"}"
   CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-    go build -trimpath -ldflags="-s -w" -o "$out" ./cmd/dido
+    go build -trimpath -ldflags="-s -w -X main.version=${VERSION:-dev}" -o "$out" ./cmd/dido
 }
 
 build_mac() {

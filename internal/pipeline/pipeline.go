@@ -192,7 +192,15 @@ func (tc *TaskConfig) set(key, val string) bool {
 // sequential.
 //
 // Serialisation of the resulting SyncMap is the caller's responsibility.
-func Execute(audioPath string, fragments []*text.Fragment, tc TaskConfig, rc config.RuntimeConfig) (*syncmap.SyncMap, error) {
+func Execute(audioPath string, fragments []*text.Fragment, tc TaskConfig, rc config.RuntimeConfig) (sm *syncmap.SyncMap, err error) {
+	// Bad config/audio can panic the numeric stages (e.g. an over-large
+	// offset). A CLI/batch tool must not crash on that — turn the panic
+	// into a returned error so callers handle it like any other failure.
+	defer func() {
+		if r := recover(); r != nil {
+			sm, err = nil, fmt.Errorf("pipeline: recovered from internal panic: %v", r)
+		}
+	}()
 	src := func() ([]float64, uint32, error) {
 		return ffmpeg.Decode(audioPath, rc.FFMpegSampleRate, rc.FFMpegPath)
 	}
@@ -341,7 +349,7 @@ func executeWithSource(
 	if allowHeadTail {
 		// The SD detector can reuse the forward synthesis MFCC we already
 		// computed (so.mfcc) to skip a redundant synth+MFCC pass for head
-		// detection; tail still resynthesises (see C5 in IMPROVEMENT_PLANS.md).
+		// detection; tail still resynthesises.
 		headLen, processLen, tailLen, hterr := headTailLengths(realMFCC, so.mfcc, fragments, tc, rc, mp, espeakPath)
 		if hterr != nil {
 			return nil, fmt.Errorf("pipeline: head/tail: %w", hterr)
@@ -387,7 +395,14 @@ func executeWithSource(
 // output formats (SRT, VTT, CSV, …) emit one cue per leaf (see A5);
 // hierarchy-aware formats (JSON, XML, SMIL/TTML at multi-level) preserve
 // the structure.
-func ExecuteMultilevel(audioPath string, tf *text.TextFile, tc TaskConfig, rc config.RuntimeConfig) (*syncmap.SyncMap, error) {
+func ExecuteMultilevel(audioPath string, tf *text.TextFile, tc TaskConfig, rc config.RuntimeConfig) (sm *syncmap.SyncMap, err error) {
+	// See Execute: panics become returned errors so one bad task can't
+	// crash a whole batch.
+	defer func() {
+		if r := recover(); r != nil {
+			sm, err = nil, fmt.Errorf("pipeline: recovered from internal panic: %v", r)
+		}
+	}()
 	// Resolve the tree depth we will recurse through. tc.Granularity
 	// follows aeneas's 1/2/3 dial:
 	//   1 → depth 1 (paragraph only — single-level alignment)

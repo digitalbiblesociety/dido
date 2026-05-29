@@ -6,7 +6,7 @@
 //
 //	go run ./cmd/parity-report [-output PATH]
 //
-// The report path defaults to PARITY_REPORT.md in the project root.
+// The report path defaults to docs/PARITY_REPORT.md.
 // Set AENEAS_PYTHON=python3.x to override the Python executable.
 //
 // This is intended as a manual / CI artefact, not a Go test. It exercises
@@ -45,7 +45,7 @@ type row struct {
 }
 
 func main() {
-	outPath := flag.String("output", "", "where to write the parity report (default: parity_report.md in repo root)")
+	outPath := flag.String("output", "", "where to write the parity report (default: docs/PARITY_REPORT.md)")
 	flag.Parse()
 
 	if err := parity.CheckAvailable(); err != nil {
@@ -70,7 +70,7 @@ func main() {
 	dest := *outPath
 	if dest == "" {
 		_, file, _, _ := runtime.Caller(0)
-		dest = filepath.Join(filepath.Dir(file), "..", "..", "PARITY_REPORT.md")
+		dest = filepath.Join(filepath.Dir(file), "..", "..", "docs", "PARITY_REPORT.md")
 	}
 
 	f, err := os.Create(dest)
@@ -403,7 +403,7 @@ func writeReport(w io.Writer, rows []row) error {
 		"boundary deltas) shows 65.8% of boundaries agree exactly within 40 ms (one MFCC "+
 		"frame), p95 ≤ 1280 ms, max 4400 ms. Note this comparison uses different TTS engines "+
 		"(Go = espeak-ng, Python = classic espeak) so some drift is from the TTS, not the "+
-		"MFCC/DTW pipeline. See `tools/psalms-parity/README.md`.")
+		"MFCC/DTW pipeline.")
 	fmt.Fprintln(w, "- **VAD with `min_nonspeech_length > len(energy)` (Go-only graceful "+
 		"behaviour)**: Go returns an all-speech mask; Python raises "+
 		"`ValueError: negative dimensions`. Excluded from the parity test "+

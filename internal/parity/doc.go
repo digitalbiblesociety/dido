@@ -42,8 +42,8 @@
 // intentionally a build-time dependency only: dido has no Python
 // requirement at runtime.
 //
-// See PARITY_REPORT.md at the repo root for the latest numerical
-// agreement and speed-up numbers across the standard benchmark set.
-// See tools/psalms-parity/ for the end-to-end alignment parity test
-// on a real-world corpus.
+// See docs/PARITY_REPORT.md for the latest numerical agreement and
+// speed-up numbers across the standard benchmark set. The
+// BenchmarkPsalmsBook* benchmarks in psalms_book_bench_test.go cover
+// end-to-end alignment parity on a real-world corpus.
 package parity

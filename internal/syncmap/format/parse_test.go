@@ -15,8 +15,8 @@ import (
 //   2. Smoke-test that subsequent refactors don't accidentally break a parser
 //      that no production caller invokes today.
 //
-// Anything left unwired here is intentional: see B8 in IMPROVEMENT_PLANS.md
-// for the rationale.
+// Anything left unwired here is intentional — these parsers have no
+// production caller today.
 
 const (
 	wantFrags       = 15

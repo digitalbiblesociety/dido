@@ -16,9 +16,8 @@
 //
 //   3. Optionally detect head/tail lengths via the sd package. The SD
 //      detector reuses the forward synthesis MFCC from step (b) for
-//      head detection (a "no-resynth" optimisation, see C5 in
-//      IMPROVEMENT_PLANS.md); tail detection still resynthesises in
-//      reverse fragment order.
+//      head detection (a "no-resynth" optimisation); tail detection
+//      still resynthesises in reverse fragment order.
 //
 //   4. Align the real-wave middle section against the synthetic MFCC
 //      via DTW (stripe or exact, decided by frame counts and the
