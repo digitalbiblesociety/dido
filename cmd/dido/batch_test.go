@@ -137,33 +137,31 @@ func TestRunBatch_AllSucceed(t *testing.T) {
 	}
 }
 
-func TestRunBatch_FirstErrorAborts(t *testing.T) {
+func TestRunBatch_ContinuesAfterError(t *testing.T) {
 	p := writeBatch(t, `[
 		{"description":"ok-1","audioFilename":"a","phraseFilename":"a","parameters":"","outputFilename":"o1"},
 		{"description":"will-fail","audioFilename":"b","phraseFilename":"b","parameters":"","outputFilename":"o2"},
-		{"description":"would-run","audioFilename":"c","phraseFilename":"c","parameters":"","outputFilename":"o3"},
-		{"description":"would-run","audioFilename":"d","phraseFilename":"d","parameters":"","outputFilename":"o4"}
+		{"description":"ok-3","audioFilename":"c","phraseFilename":"c","parameters":"","outputFilename":"o3"},
+		{"description":"ok-4","audioFilename":"d","phraseFilename":"d","parameters":"","outputFilename":"o4"}
 	]`)
 	wantErr := errors.New("synthetic alignment failure")
 	r := &recordingRunner{
 		failOnDesc: map[string]error{"o2": wantErr},
 	}
-	// workers=1 to keep ordering deterministic and ensure the
-	// post-fail tasks see aborted=true on dequeue.
-	err := runBatchWith(p, r.run, 1, io.Discard)
+	var buf bytes.Buffer
+	// workers=1 keeps ordering deterministic; task 2 fails but 3 and 4 must still run.
+	err := runBatchWith(p, r.run, 1, &buf)
 	if err == nil {
 		t.Fatal("expected an error, got nil")
 	}
 	if !errors.Is(err, wantErr) {
-		t.Errorf("returned error doesn't wrap original: %v", err)
+		t.Errorf("returned error doesn't wrap first failure: %v", err)
 	}
-	got := int(r.count.Load())
-	// First task succeeds, second fails. Aborted=true is set by the
-	// failing task before the dispatcher loops, so tasks 3 and 4 are
-	// either never enqueued or dequeued-and-dropped — runner sees at
-	// most 2 calls.
-	if got > 2 {
-		t.Errorf("runner called %d times after abort; should be ≤ 2", got)
+	if got := int(r.count.Load()); got != 4 {
+		t.Errorf("runner called %d times; all 4 tasks should run despite one failure", got)
+	}
+	if !strings.Contains(buf.String(), "3 ok, 1 failed") {
+		t.Errorf("summary should report 3 ok / 1 failed; got: %s", buf.String())
 	}
 }
 

@@ -60,8 +60,8 @@ func parseBatchFile(path string) ([]BatchTask, error) {
 // alignment body. Tests inject a fake; production passes runTask.
 type taskRunner func(audioPath, textPath, configStr, outputPath string) error
 
-// runBatch is the entry point for `dido --batch <file>`. First-error
-// aborts the rest of the queue (matches go-aeneas v0.0.5).
+// runBatch is the entry point for `dido --batch <file>`. A failed task
+// is logged and the queue continues; the run ends non-zero if any failed.
 func runBatch(path string) error {
 	return runBatchWith(path, runTask, batchWorkers(), os.Stderr)
 }
@@ -92,7 +92,6 @@ func runBatchWith(path string, runner taskRunner, workers int, logw io.Writer) e
 		okCount  atomic.Int64
 		failed   atomic.Int64
 		firstErr atomicErr
-		aborted  atomic.Bool
 	)
 	jobs := make(chan BatchTask)
 	start := time.Now()
@@ -102,15 +101,11 @@ func runBatchWith(path string, runner taskRunner, workers int, logw io.Writer) e
 		go func() {
 			defer wg.Done()
 			for t := range jobs {
-				if aborted.Load() {
-					continue
-				}
 				ts := time.Now()
 				err := runner(t.AudioFilename, t.PhraseFilename, t.Parameters, t.OutputFilename)
 				if err != nil {
 					failed.Add(1)
 					firstErr.set(fmt.Errorf("task %q: %w", t.Description, err))
-					aborted.Store(true)
 					fmt.Fprintf(w, "  FAIL  %s — %v\n", t.Description, err)
 					continue
 				}
@@ -122,20 +117,21 @@ func runBatchWith(path string, runner taskRunner, workers int, logw io.Writer) e
 	}
 
 	for _, t := range tasks {
-		if aborted.Load() {
-			break
-		}
 		jobs <- t
 	}
 	close(jobs)
 	wg.Wait()
 
-	fmt.Fprintf(w, "Done in %s. %d ok, %d failed, %d skipped (post-abort).\n",
-		time.Since(start).Round(time.Second),
-		okCount.Load(), failed.Load(),
-		int64(len(tasks))-okCount.Load()-failed.Load())
+	nFail := failed.Load()
+	fmt.Fprintf(w, "Done in %s. %d ok, %d failed.\n",
+		time.Since(start).Round(time.Second), okCount.Load(), nFail)
 
-	return firstErr.get()
+	// Surface the first failure so the exit code is non-zero.
+	if nFail > 0 {
+		return fmt.Errorf("%d of %d task(s) failed; first failure: %w",
+			nFail, len(tasks), firstErr.get())
+	}
+	return nil
 }
 
 func runTask(audioPath, textPath, configStr, outputPath string) error {

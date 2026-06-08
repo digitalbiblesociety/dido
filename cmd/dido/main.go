@@ -8,6 +8,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/digitalbiblesociety/dido/internal/config"
@@ -92,7 +93,10 @@ BATCH MODE
                               fields description / audioFilename /
                               phraseFilename / parameters / outputFilename.
                               Both a bare top-level array and a wrapped
-                              {"tasks":[...]} object are accepted.
+                              {"tasks":[...]} object are accepted. Output
+                              directories are created as needed; a failed
+                              task is logged and the queue continues, but
+                              the run exits non-zero if any task failed.
 
 ENVIRONMENT
   DIDO_TTS_WORKERS=<n>      Cap on parallel TTS subprocesses (0 = NumCPU).
@@ -232,6 +236,12 @@ func run(audioPath, textPath, configStr, outputPath string) error {
 		return fmt.Errorf("format output: %w", err)
 	}
 
+	// Batch files point at per-package dirs that may not exist yet.
+	if dir := filepath.Dir(outputPath); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create output dir %s: %w", dir, err)
+		}
+	}
 	if err := os.WriteFile(outputPath, []byte(result), 0o644); err != nil {
 		return fmt.Errorf("write output: %w", err)
 	}
