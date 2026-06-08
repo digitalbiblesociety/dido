@@ -400,7 +400,7 @@ func fragmentsEndingInsideNonspeech(
 		if nsi.End.Greater(listEnd) {
 			break
 		}
-		shadowBegin := nsi.Begin.Sub(tolerance)
+		shadowBegin := nsi.Begin.SubAllowNeg(tolerance) // Sub would panic on negative
 		if shadowBegin.Less(timing.Zero) {
 			shadowBegin = timing.Zero
 		}

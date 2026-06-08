@@ -404,6 +404,24 @@ func TestFragmentsEndingInsideNonspeech_AmbiguousMultiMatchDropped(t *testing.T)
 	}
 }
 
+func TestFragmentsEndingInsideNonspeech_NonspeechAtZero(t *testing.T) {
+	// Regression: nonspeech beginning at 0.000 sent the tolerance shadow
+	// negative and panicked in TimeValue.Sub ("Sub result negative: 0.000 - 0.080").
+	frags := []fragItem{
+		head(0.1),
+		regular(0.1, 0.5, 5),
+		regular(0.5, 1.0, 5),
+		tail(1.0, 1.2),
+	}
+	ns := []timing.TimeInterval{
+		{Begin: tv(0.0), End: tv(0.08)},
+	}
+	got := fragmentsEndingInsideNonspeech(frags, ns, tv(0.08), 1, len(frags)-1)
+	if len(got) != 0 {
+		t.Errorf("nonspeech at zero should yield no match here; got %+v", got)
+	}
+}
+
 func TestFragmentsEndingInsideNonspeech_FragSpansShadow(t *testing.T) {
 	// Fragment fully inside the shadow → nsi invalidated, no match.
 	frags := []fragItem{
