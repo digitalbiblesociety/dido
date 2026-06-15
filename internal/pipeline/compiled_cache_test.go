@@ -8,7 +8,7 @@ import (
 
 // Same key → same *Compiled; different keys → different *Compileds.
 func TestCompiledCacheKeyIdentity(t *testing.T) {
-	cc := newCompiledCache()
+	cc := make(compiledCache)
 	p := mfcc.DefaultParams()
 
 	a1, err := cc.get(p, 16000)
@@ -45,7 +45,7 @@ func TestCompiledCacheKeyIdentity(t *testing.T) {
 // A nil receiver disables caching — every call must hand back a fresh
 // *Compiled. Pins the no-branching opt-out used by single-level Execute.
 func TestCompiledCacheNilDisablesCaching(t *testing.T) {
-	var cc *compiledCache
+	var cc compiledCache
 	p := mfcc.DefaultParams()
 	a, err := cc.get(p, 16000)
 	if err != nil {
@@ -62,12 +62,12 @@ func TestCompiledCacheNilDisablesCaching(t *testing.T) {
 
 // Compile errors propagate verbatim and don't poison the cache.
 func TestCompiledCachePropagatesCompileError(t *testing.T) {
-	cc := newCompiledCache()
+	cc := make(compiledCache)
 	bad := mfcc.Params{FFTOrder: 3} // not a power of 2
 	if _, err := cc.get(bad, 16000); err == nil {
 		t.Fatal("expected error for invalid params")
 	}
-	if got := len(cc.m); got != 0 {
+	if got := len(cc); got != 0 {
 		t.Errorf("cache stored a failed build: len=%d", got)
 	}
 	if _, err := cc.get(mfcc.DefaultParams(), 16000); err != nil {
