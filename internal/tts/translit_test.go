@@ -31,7 +31,7 @@ func TestPrepareTextForSpeechNativeVoice(t *testing.T) {
 	// Hindi has a native eSpeak-ng voice → no transliteration even though
 	// the script is Devanagari.
 	in := "नमस्ते"
-	out, src := PrepareTextForSpeech(in, "hin")
+	out, src := (Options{}).prepareTextForSpeech(in, "hin")
 	if out != in {
 		t.Errorf("native voice should not transliterate; got %q, want %q", out, in)
 	}
@@ -44,7 +44,7 @@ func TestPrepareTextForSpeechFallbackGreek(t *testing.T) {
 	// "grc" (Ancient Greek) actually has a native espeak-ng voice. Use a
 	// fake language code to force the fallback path.
 	in := "Ἰησοῦς Χριστός"
-	out, src := PrepareTextForSpeech(in, "unknown_grc_xx")
+	out, src := (Options{}).prepareTextForSpeech(in, "unknown_grc_xx")
 	if out == in {
 		t.Fatalf("fallback voice should transliterate non-Latin text; got unchanged %q", in)
 	}
@@ -69,7 +69,7 @@ func TestPrepareTextForSpeechFallbackLatin(t *testing.T) {
 	// Already-Latin text under an unknown language → no engine match →
 	// returned unchanged.
 	in := "Hello world."
-	out, src := PrepareTextForSpeech(in, "unknown_xx")
+	out, src := (Options{}).prepareTextForSpeech(in, "unknown_xx")
 	if out != in {
 		t.Errorf("latin text under fallback voice should pass through; got %q", out)
 	}
@@ -79,11 +79,10 @@ func TestPrepareTextForSpeechFallbackLatin(t *testing.T) {
 }
 
 func TestPrepareTextForSpeechDisabled(t *testing.T) {
-	AutoTransliterateDisabled.Store(1)
-	t.Cleanup(func() { AutoTransliterateDisabled.Store(0) })
+	opts := Options{DisableTransliteration: true}
 
 	in := "Ἰησοῦς Χριστός"
-	out, src := PrepareTextForSpeech(in, "unknown_xx")
+	out, src := opts.prepareTextForSpeech(in, "unknown_xx")
 	if out != in {
 		t.Errorf("when disabled, text should pass through; got %q", out)
 	}
@@ -93,7 +92,7 @@ func TestPrepareTextForSpeechDisabled(t *testing.T) {
 }
 
 func TestPrepareTextForSpeechEmpty(t *testing.T) {
-	out, src := PrepareTextForSpeech("", "unknown_xx")
+	out, src := (Options{}).prepareTextForSpeech("", "unknown_xx")
 	if out != "" || src != "" {
 		t.Errorf("empty input: got (%q, %q)", out, src)
 	}

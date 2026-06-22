@@ -12,7 +12,7 @@
 //
 // SynthesizeMultiple spawns up to N parallel espeak-ng processes
 // where N is, in priority order:
-//   1. the workers argument to SynthesizeMultipleWith (if > 0);
+//   1. Options.Workers in SynthesizeMultipleWith (if > 0);
 //   2. the DIDO_TTS_WORKERS environment variable (positive int);
 //   3. runtime.NumCPU().
 //
@@ -30,13 +30,12 @@
 //
 // When a fragment's Language has no native espeak-ng voice (so VoiceFor
 // falls back to "en") AND the text is dominated by a non-Latin script,
-// the text is romanised before synthesis via PrepareTextForSpeech.
+// the text is romanised before synthesis.
 // This avoids the English voice mispronouncing Greek / Hebrew /
 // Devanagari / Syriac / etc. byte sequences while leaving the
 // per-fragment time intervals (the actual deliverable) accurate.
 //
-// Disable globally by setting AutoTransliterateDisabled to 1, or from
-// the user config string with `tts_auto_transliterate=false`.
+// Set tts_auto_transliterate=false to disable transliteration for a task.
 //
 // The transliteration tables are provided by the
 // github.com/digitalbiblesociety/transliterate library — the only

@@ -124,12 +124,17 @@ type Result struct {
 // Empty-text fragments produce a zero-duration interval (no audio samples are
 // appended for them), matching aeneas Python behaviour.
 func SynthesizeMultiple(fragments []Fragment, binaryPath string) (*Result, error) {
-	return SynthesizeMultipleWith(fragments, binaryPath, 0)
+	return SynthesizeMultipleWith(fragments, binaryPath, Options{})
 }
 
-// SynthesizeMultipleWith is SynthesizeMultiple with an explicit concurrency
-// cap. Pass 0 to use the default (DIDO_TTS_WORKERS env var, else NumCPU).
-func SynthesizeMultipleWith(fragments []Fragment, binaryPath string, workers int) (*Result, error) {
+// Options controls synthesis for one call. The zero value uses the default
+// worker count and transliterates text for fallback voices.
+type Options struct {
+	Workers                int
+	DisableTransliteration bool
+}
+
+func SynthesizeMultipleWith(fragments []Fragment, binaryPath string, opts Options) (*Result, error) {
 	binary, err := ResolveBinaryPath(binaryPath)
 	if err != nil {
 		return nil, err
@@ -141,7 +146,7 @@ func SynthesizeMultipleWith(fragments []Fragment, binaryPath string, workers int
 	}
 	works := make([]work, len(fragments))
 
-	concurrency := resolveTTSConcurrency(workers)
+	concurrency := resolveTTSConcurrency(opts.Workers)
 	sem := make(chan struct{}, concurrency)
 
 	var wg sync.WaitGroup
@@ -157,7 +162,7 @@ func SynthesizeMultipleWith(fragments []Fragment, binaryPath string, workers int
 			// Auto-transliterate non-Latin text when the assigned voice
 			// is the English fallback. No-op for languages with a
 			// native voice or for already-Latin text.
-			textForSpeech, _ := PrepareTextForSpeech(frag.Text, frag.Language)
+			textForSpeech, _ := opts.prepareTextForSpeech(frag.Text, frag.Language)
 			s, e := synthesizeOne(binary, VoiceFor(frag.Language), textForSpeech)
 			works[i] = work{s, e}
 		}(i, frag)

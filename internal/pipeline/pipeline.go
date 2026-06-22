@@ -247,14 +247,6 @@ func executeWithSource(
 	}
 	mp := rcToMFCCParams(rc)
 
-	// Toggle auto-transliteration based on config. The flag is process-
-	// global (atomic) because the TTS worker pool is package-level.
-	if rc.TTSAutoTranslit {
-		tts.AutoTransliterateDisabled.Store(0)
-	} else {
-		tts.AutoTransliterateDisabled.Store(1)
-	}
-
 	espeakPath, err := tts.ResolveBinary(rc.TTS, rc.TTSPath)
 	if err != nil {
 		return nil, fmt.Errorf("pipeline: espeak path: %w", err)
@@ -301,7 +293,7 @@ func executeWithSource(
 	}
 	synthCh := make(chan synthOut, 1)
 	go func() {
-		sr, err := tts.SynthesizeMultipleWith(toTTSFragments(fragments, tc.Language), espeakPath, rc.TTSConcurrency)
+		sr, err := tts.SynthesizeMultipleWith(toTTSFragments(fragments, tc.Language), espeakPath, ttsOptions(rc))
 		if err != nil {
 			synthCh <- synthOut{err: fmt.Errorf("pipeline: synthesis: %w", err)}
 			return
@@ -655,6 +647,7 @@ func headTailLengths(
 		MFCCParams:        mp,
 		VADParams:         vadP,
 		EspeakPath:        espeakPath,
+		TTSOptions:        ttsOptions(rc),
 		CachedForwardMFCC: forwardSynthMFCC,
 	})
 
@@ -689,6 +682,10 @@ func sdBounds(minPtr, maxPtr *timing.TimeValue) (min, max timing.TimeValue) {
 	return min, max
 }
 
+func ttsOptions(rc config.RuntimeConfig) tts.Options {
+	return tts.Options{Workers: rc.TTSConcurrency, DisableTransliteration: !rc.TTSAutoTranslit}
+}
+
 func toTTSFragments(frags []*text.Fragment, defaultLang string) []tts.Fragment {
 	out := make([]tts.Fragment, len(frags))
 	for i, f := range frags {
@@ -697,7 +694,7 @@ func toTTSFragments(frags []*text.Fragment, defaultLang string) []tts.Fragment {
 			lang = defaultLang
 		}
 		txt := f.FilteredText()
-		if txt == "" {
+		if f.FilteredLines == nil {
 			txt = f.Text()
 		}
 		out[i] = tts.Fragment{Identifier: f.Identifier, Language: lang, Text: txt}

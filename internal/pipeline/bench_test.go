@@ -204,7 +204,7 @@ func BenchmarkPipelineStagesSonnet(b *testing.B) {
 		rmfccT += time.Since(t1)
 
 		t2 := time.Now()
-		sr, err := tts.SynthesizeMultipleWith(ttsFragments, espeakPath, rc.TTSConcurrency)
+		sr, err := tts.SynthesizeMultipleWith(ttsFragments, espeakPath, ttsOptions(rc))
 		if err != nil {
 			b.Fatalf("tts: %v", err)
 		}

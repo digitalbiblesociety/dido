@@ -1,19 +1,8 @@
 package tts
 
-import (
-	"sync/atomic"
+import "github.com/digitalbiblesociety/transliterate/script"
 
-	"github.com/digitalbiblesociety/transliterate/script"
-)
-
-// AutoTransliterateDisabled, when set to a non-zero value, suppresses the
-// automatic Latin transliteration of non-Latin text whose language has no
-// native eSpeak-ng voice. The pipeline sets this from the
-// tts_auto_transliterate config key. Defaults to 0 (auto-transliterate
-// enabled).
-var AutoTransliterateDisabled atomic.Int32
-
-// PrepareTextForSpeech is the pre-flight transformation applied to a
+// prepareTextForSpeech is the pre-flight transformation applied to a
 // fragment's text before it is fed to eSpeak-ng. When the assigned voice
 // is the English fallback (i.e. lang had no native voice mapping) AND
 // the text is dominated by a non-Latin script with a known
@@ -25,13 +14,8 @@ var AutoTransliterateDisabled atomic.Int32
 // of the source script when transliteration was performed (empty
 // otherwise). The script tag is exposed for logging/diagnostics — it's
 // what a future SynthesisError.SourceScript field would carry.
-//
-// This is a deliberate divergence from the upstream Python aeneas
-// pipeline, which silently passes non-Latin bytes to eSpeak-ng's
-// English voice. Disable it with AutoTransliterateDisabled if you have
-// a more sophisticated pre-processing pipeline upstream.
-func PrepareTextForSpeech(text, lang string) (out string, sourceScript string) {
-	if AutoTransliterateDisabled.Load() != 0 {
+func (opts Options) prepareTextForSpeech(text, lang string) (out string, sourceScript string) {
+	if opts.DisableTransliteration {
 		return text, ""
 	}
 	if !IsFallbackVoice(lang) {

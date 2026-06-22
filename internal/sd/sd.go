@@ -56,6 +56,7 @@ type Config struct {
 	VADParams vad.Params
 	// EspeakPath overrides the espeak-ng binary path ("" = use PATH).
 	EspeakPath string
+	TTSOptions tts.Options
 
 	// CachedForwardMFCC, when non-nil, lets DetectHead skip synthesis and
 	// MFCC computation by reusing this caller-supplied forward-direction
@@ -245,7 +246,7 @@ func (d *Detector) synthesizeQuery(synthDuration timing.TimeValue, tail bool) (*
 		}
 		frags = rev
 	}
-	return tts.SynthesizeMultiple(frags, d.cfg.EspeakPath)
+	return tts.SynthesizeMultipleWith(frags, d.cfg.EspeakPath, d.cfg.TTSOptions)
 }
 
 // cloneAudioMFCC deep-copies an AudioMFCC so Reverse() on the clone
