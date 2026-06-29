@@ -166,3 +166,28 @@ func TestThreeWayArgmin(t *testing.T) {
 	if v := threeWayArgmin(1, 2, 3); v != 0 { t.Errorf("got %d", v) }
 	if v := threeWayArgmin(3, 2, 1); v != 2 { t.Errorf("got %d", v) }
 }
+
+func TestStripeBacktraceAtLeftEdge(t *testing.T) {
+	real := [][]float64{{0, 0, 0}, {-1, -1, -1}}
+	synth := [][]float64{{0, 0, 0}, {-1, 1, -1}}
+	cost, centers := ComputeCostMatrix(real, synth, 2)
+	path := ComputePathStripe(real, synth, 2)
+	if len(path) == 0 || path[0] != (PathCell{0, 0}) || path[len(path)-1] != (PathCell{2, 2}) {
+		t.Fatalf("incomplete path: %v", path)
+	}
+	var sum float64
+	for _, cell := range path {
+		sum += cost[cell.I][cell.J-centers[cell.I]]
+	}
+	if sum != 2 {
+		t.Errorf("path %v costs %g, want 2", path, sum)
+	}
+}
+
+func TestStripeCannotReachEndpoint(t *testing.T) {
+	real := syntheticMFCC(3, 2, 1)
+	synth := syntheticMFCC(3, 9, 2)
+	if path := ComputePathStripe(real, synth, 2); path != nil {
+		t.Errorf("got incomplete path %v", path)
+	}
+}

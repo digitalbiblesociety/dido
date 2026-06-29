@@ -93,7 +93,7 @@ func cosineDistance(sum, n1, n2 float64) float64 {
 // Returns (nil, nil) if either input has fewer than 2 coefficient rows
 // (after discarding row 0 there's nothing to align) or zero frames.
 func ComputeCostMatrix(mfcc1, mfcc2 [][]float64, delta int) ([][]float64, []int) {
-	if len(mfcc1) < 2 || len(mfcc2) < 2 {
+	if len(mfcc1) < 2 || len(mfcc2) < 2 || delta <= 0 {
 		return nil, nil
 	}
 	// Discard first MFCC component (row 0).
@@ -176,6 +176,23 @@ func ComputeCostMatrix(mfcc1, mfcc2 [][]float64, delta int) ([][]float64, []int)
 	return costMatrix, centers
 }
 
+// stripePredecessors uses the offset between row starts to locate the
+// same column and its diagonal neighbor in the previous row.
+func stripePredecessors(prev, row []float64, col, offset int) (up, left, diagonal float64) {
+	up, left, diagonal = inf, inf, inf
+	prevCol := col + offset
+	if prevCol < len(prev) {
+		up = prev[prevCol]
+	}
+	if col > 0 {
+		left = row[col-1]
+	}
+	if prevCol > 0 && prevCol <= len(prev) {
+		diagonal = prev[prevCol-1]
+	}
+	return
+}
+
 // AccumulateCostMatrixInPlace overwrites costMatrix with the accumulated cost.
 // Matches _compute_accumulated_cost_matrix_in_place in cdtw_func.c.
 func AccumulateCostMatrixInPlace(costMatrix [][]float64, centers []int) {
@@ -196,32 +213,24 @@ func AccumulateCostMatrixInPlace(costMatrix [][]float64, centers []int) {
 		copy(currentRow, costMatrix[i])
 		offset := centers[i] - centers[i-1]
 		for j := 0; j < delta; j++ {
-			cost0 := inf
-			if j+offset < delta {
-				cost0 = costMatrix[i-1][j+offset]
-			}
-			cost1 := inf
-			if j > 0 {
-				cost1 = costMatrix[i][j-1]
-			}
-			cost2 := inf
-			if (j+offset-1 < delta) && (j+offset >= 1) {
-				cost2 = costMatrix[i-1][j+offset-1]
-			}
-			costMatrix[i][j] = currentRow[j] + threeWayMin(cost0, cost1, cost2)
+			up, left, diagonal := stripePredecessors(costMatrix[i-1], costMatrix[i], j, offset)
+			costMatrix[i][j] = currentRow[j] + threeWayMin(up, left, diagonal)
 		}
 	}
 }
 
 // ComputeBestPath performs the backtrace on the accumulated cost matrix.
 // Returns the optimal path as a slice of PathCells from (0,0) to (n-1, m-1).
-// Matches _compute_best_path in cdtw_func.c.
+// An unreachable endpoint has no path.
 func ComputeBestPath(accMatrix [][]float64, centers []int) []PathCell {
 	n := len(accMatrix)
 	if n == 0 {
 		return nil
 	}
 	delta := len(accMatrix[0])
+	if delta == 0 || accMatrix[n-1][delta-1] >= inf {
+		return nil
+	}
 
 	maxPathLen := n + centers[n-1] + delta
 	path := make([]PathCell, 0, maxPathLen)
@@ -241,20 +250,8 @@ func ComputeBestPath(accMatrix [][]float64, centers []int) []PathCell {
 			offset := centers[i] - centers[i-1]
 			rj := j - centers[i]
 
-			cost0 := inf
-			if rj+offset < delta {
-				cost0 = accMatrix[i-1][rj+offset]
-			}
-			cost1 := inf
-			if rj > 0 {
-				cost1 = accMatrix[i][rj-1]
-			}
-			cost2 := inf
-			if (rj > 0) && (rj+offset-1 < delta) && (rj+offset >= 1) {
-				cost2 = accMatrix[i-1][rj+offset-1]
-			}
-
-			switch threeWayArgmin(cost0, cost1, cost2) {
+			up, left, diagonal := stripePredecessors(accMatrix[i-1], accMatrix[i], rj, offset)
+			switch threeWayArgmin(up, left, diagonal) {
 			case 0: // up
 				i--
 				path = append(path, PathCell{i, j})
@@ -279,7 +276,7 @@ func ComputeBestPath(accMatrix [][]float64, centers []int) []PathCell {
 // ComputePathStripe is the full stripe DTW: cost matrix → accumulation → backtrace.
 func ComputePathStripe(mfcc1, mfcc2 [][]float64, delta int) []PathCell {
 	cost, centers := ComputeCostMatrix(mfcc1, mfcc2, delta)
-	if cost == nil {
+	if cost == nil || centers[len(centers)-1]+len(cost[0]) != len(mfcc2[1]) {
 		return nil
 	}
 	AccumulateCostMatrixInPlace(cost, centers)
