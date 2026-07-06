@@ -211,6 +211,17 @@ func ParseStrict(configString string) (RuntimeConfig, []string) {
 		return rc, nil
 	}
 	kv := ParseConfigString(configString)
+	// An explicit global setting supplies the default for every level.
+	for _, key := range []string{"dtw_margin", "mfcc_window_length", "mfcc_window_shift", "mfcc_mask_nonspeech"} {
+		if value, ok := kv[key]; ok {
+			for _, suffix := range []string{"_l1", "_l2", "_l3"} {
+				levelKey := key + suffix
+				if _, overridden := kv[levelKey]; !overridden {
+					kv[levelKey] = value
+				}
+			}
+		}
+	}
 	var unknown []string
 	for k, v := range kv {
 		if !rc.set(k, v) {
@@ -347,6 +358,14 @@ func (rc *RuntimeConfig) set(key, val string) bool {
 		return false
 	}
 	return true
+}
+
+// DTWStripeWidth returns the stripe width in frames. Zero selects exact DTW.
+func (rc RuntimeConfig) DTWStripeWidth() int {
+	if rc.DTWAlgorithm == "exact" {
+		return 0
+	}
+	return int(2 * rc.DTWMargin / rc.MFCCWindowShift)
 }
 
 // SetGranularity updates MFCC window and DTW margin parameters for the

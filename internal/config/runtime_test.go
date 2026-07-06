@@ -122,3 +122,26 @@ func TestMFCCParams(t *testing.T) {
 		t.Error("MFCCSize mismatch")
 	}
 }
+
+func TestGlobalSettingsAndLevelOverrides(t *testing.T) {
+	rc := Parse("dtw_margin_l2=3|dtw_margin=1|mfcc_window_length=0.2|mfcc_window_shift=0.08|mfcc_mask_nonspeech=true|mfcc_mask_nonspeech_l3=false")
+	for _, level := range []int{1, 2, 3, 4, 1} {
+		rc.SetGranularity(level)
+		wantWidth := 25
+		if level == 2 {
+			wantWidth = 75
+		}
+		if rc.DTWStripeWidth() != wantWidth || rc.MFCCWindowLength != 0.2 || rc.MFCCWindowShift != 0.08 || rc.MFCCMaskNonspeech != (level < 3) {
+			t.Errorf("level %d: width %d, window %g, shift %g, mask %t", level,
+				rc.DTWStripeWidth(), rc.MFCCWindowLength, rc.MFCCWindowShift, rc.MFCCMaskNonspeech)
+		}
+	}
+}
+
+func TestExactDTWIgnoresStripeMargin(t *testing.T) {
+	rc := Parse("dtw_algorithm=exact|dtw_margin=0.2")
+	rc.SetGranularity(1)
+	if width := rc.DTWStripeWidth(); width != 0 {
+		t.Errorf("exact DTW requested a %d-frame stripe", width)
+	}
+}

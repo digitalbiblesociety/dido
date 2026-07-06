@@ -350,7 +350,7 @@ func executeWithSource(
 
 	// DTW alignment → boundary frame indices.
 	mws := rc.MFCCWindowShift
-	delta := int(2.0 * rc.DTWMargin / mws)
+	delta := rc.DTWStripeWidth()
 	boundaries, err := align.ComputeBoundaries(realMFCC, so.mfcc, so.intervals, mws, delta)
 	if err != nil {
 		return nil, fmt.Errorf("pipeline: align: %w", err)

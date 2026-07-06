@@ -181,7 +181,7 @@ func BenchmarkPipelineStagesSonnet(b *testing.B) {
 	ttsFragments := toTTSFragments(fragments, tc.Language)
 	abaParams := buildABAParams(tc, rc)
 	mws := rc.MFCCWindowShift
-	delta := int(2.0 * rc.DTWMargin / mws)
+	delta := rc.DTWStripeWidth()
 
 	var (
 		decodeT, rmfccT, ttsT, smfccT, dtwT, abaT time.Duration
