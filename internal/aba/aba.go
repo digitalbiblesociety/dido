@@ -24,6 +24,7 @@ import (
 	"github.com/digitalbiblesociety/dido/internal/syncmap"
 	"github.com/digitalbiblesociety/dido/internal/text"
 	"github.com/digitalbiblesociety/dido/internal/timing"
+	"github.com/digitalbiblesociety/dido/internal/vad"
 )
 
 // Algorithm identifies an adjustment strategy.
@@ -62,6 +63,8 @@ const rateEpsilon = 0.001
 
 // Params controls boundary adjustment.
 type Params struct {
+	// VADParams controls silence detection when the audio has no cached mask.
+	VADParams vad.Params
 	// Algorithm is the adjustment strategy.
 	Algorithm Algorithm
 	// Value is the numeric parameter for OFFSET (seconds), PERCENT (0–100),
@@ -148,11 +151,15 @@ func Adjust(
 			len(boundaryIndices), len(textFragments)+1)
 	}
 
+	needsSilence := p.NonspeechMinLength > 0 || p.Algorithm == PERCENT || p.Algorithm == AFTERCURRENT || p.Algorithm == BEFORENEXT
+	if needsSilence && realMFCC.Mask() == nil {
+		realMFCC.RunVAD(p.VADParams)
+	}
 	frags := buildFragList(boundaryIndices, textFragments, realMFCC)
 	if p.NoZero {
 		applyNoZero(frags, realMFCC.WindowShift(), p.NoZeroDuration)
 	}
-	if p.NonspeechMinLength > 0 && realMFCC.Mask() != nil {
+	if p.NonspeechMinLength > 0 {
 		frags = injectNonspeech(frags, realMFCC, p)
 	}
 	if err := applyAlgorithm(frags, realMFCC, p); err != nil {
@@ -509,9 +516,6 @@ func applyOffset(frags []fragItem, offset, audioLen timing.TimeValue) {
 // applyOnNonspeech moves each boundary that falls inside a nonspeech
 // interval's shadow to the point chosen by newTimeFn.
 func applyOnNonspeech(frags []fragItem, realMFCC *audiomfcc.AudioMFCC, toleranceSec float64, newTimeFn func(timing.TimeInterval) timing.TimeValue) {
-	if realMFCC.Mask() == nil {
-		return
-	}
 	nsIntervals := realMFCC.Intervals(false)
 	tol := timing.FromFloat64(toleranceSec)
 	matches := fragmentsEndingInsideNonspeech(frags, nsIntervals, tol, 1, len(frags)-1)

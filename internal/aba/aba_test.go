@@ -517,3 +517,18 @@ func types(frags []fragItem) []syncmap.FragmentType {
 	}
 	return out
 }
+
+func TestAdjustComputesMissingSilenceIntervals(t *testing.T) {
+	energy := []float64{5, 5, 5, 5, 0, 0, 0, 5, 5, 5, 5, 5}
+	params := Params{
+		Algorithm: PERCENT, Value: 100,
+		VADParams: vad.Params{LogEnergyThreshold: 2, MinNonspeechLength: 3},
+	}
+	sm, err := Adjust([]int{0, 5, 12}, simpleFragments(2), makeAudioMFCC(energy, 0.04), params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sm.Fragments()[1].End().Float64(); !near(got, 0.28) {
+		t.Errorf("boundary = %g, want end of silence at 0.28", got)
+	}
+}

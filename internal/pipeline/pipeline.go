@@ -634,18 +634,10 @@ func headTailLengths(
 		return headLen, nil, tailLen, nil
 	}
 
-	mws := rc.MFCCWindowShift
-	vadP := vad.ParamsFromSeconds(
-		rc.VADLogEnergyThreshold,
-		rc.VADMinNonspeechLength,
-		rc.VADExtendBefore,
-		rc.VADExtendAfter,
-		mws,
-	)
 	detector := sd.New(realMFCC, toTTSFragments(fragments, tc.Language), sd.Config{
-		MFCCWindowShift:   mws,
+		MFCCWindowShift:   rc.MFCCWindowShift,
 		MFCCParams:        mp,
-		VADParams:         vadP,
+		VADParams:         vadParams(rc),
 		EspeakPath:        espeakPath,
 		TTSOptions:        ttsOptions(rc),
 		CachedForwardMFCC: forwardSynthMFCC,
@@ -680,6 +672,11 @@ func sdBounds(minPtr, maxPtr *timing.TimeValue) (min, max timing.TimeValue) {
 		max = sd.DefaultMaxLength
 	}
 	return min, max
+}
+
+func vadParams(rc config.RuntimeConfig) vad.Params {
+	return vad.ParamsFromSeconds(rc.VADLogEnergyThreshold, rc.VADMinNonspeechLength,
+		rc.VADExtendBefore, rc.VADExtendAfter, rc.MFCCWindowShift)
 }
 
 func ttsOptions(rc config.RuntimeConfig) tts.Options {
@@ -721,6 +718,7 @@ func buildABAParams(tc TaskConfig, rc config.RuntimeConfig) aba.Params {
 		value = tc.ABARate
 	}
 	return aba.Params{
+		VADParams:          vadParams(rc),
 		Algorithm:          algo,
 		Value:              value,
 		NoZero:             tc.ABANoZero,
