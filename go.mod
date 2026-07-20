@@ -2,9 +2,8 @@ module github.com/digitalbiblesociety/dido
 
 go 1.26
 
-// Patched toolchain: go1.26.0's stdlib carries GO-2026-4602, reachable
-// here via filepath.WalkDir. `go 1.26` above stays the language floor.
-toolchain go1.26.1
+// Use a patched standard library for local builds and CI.
+toolchain go1.26.11
 
 require (
 	github.com/charmbracelet/bubbles v1.0.0
@@ -37,5 +36,5 @@ require (
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/sys v0.44.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )

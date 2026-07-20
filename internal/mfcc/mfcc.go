@@ -114,7 +114,7 @@ type Compiled struct {
 	sinFull []float64
 	sinHalf []float64
 	hamming []float64
-	filters []float64
+	filters []melFilter
 	s2dct   []float64
 
 	// Derived sizes.
@@ -308,10 +308,10 @@ func (c *Compiled) computeFrameRange(
 		}
 
 		// Mel filter bank → log.
-		for j := 0; j < p.FilterBankSize; j++ {
+		for j, filter := range c.filters {
 			acc := 0.0
-			for i := 0; i < c.filtersN; i++ {
-				acc += power[i] * c.filters[i*p.FilterBankSize+j]
+			for i, weight := range filter.weights {
+				acc += power[filter.firstBin+i] * weight
 			}
 			if acc < cutoff {
 				acc = cutoff
@@ -387,19 +387,21 @@ func roundNearest(x float64) int {
 	return int(math.Floor(x + 0.5))
 }
 
-// createMelFilterBank builds a (filtersN × filterBankSize) filter matrix.
-// filtersN = fftOrder/2 + 1.
-// Matches _create_mel_filter_bank in cmfcc_func.c.
-// The returned slice is row-major: filters[i*filterBankSize+j].
-func createMelFilterBank(fftOrder, filterBankSize, sampleRate int, upperFreq, lowerFreq float64) []float64 {
+// A triangular Mel filter occupies a contiguous range of FFT bins.
+type melFilter struct {
+	firstBin int
+	weights  []float64
+}
+
+// createMelFilterBank computes the same weights as _create_mel_filter_bank
+// in cmfcc_func.c, storing only the bins covered by each filter.
+func createMelFilterBank(fftOrder, filterBankSize, sampleRate int, upperFreq, lowerFreq float64) []melFilter {
 	stepFreq := float64(sampleRate) / float64(fftOrder)
 	melmax := hz2mel(upperFreq)
 	melmin := hz2mel(lowerFreq)
 	melstep := (melmax - melmin) / float64(filterBankSize+1)
 	filterEdgeLen := filterBankSize + 2
-	filtersN := fftOrder/2 + 1
-
-	filters := make([]float64, filtersN*filterBankSize)
+	filters := make([]melFilter, filterBankSize)
 
 	filterEdges := make([]float64, filterEdgeLen)
 	for k := 0; k < filterEdgeLen; k++ {
@@ -417,13 +419,14 @@ func createMelFilterBank(fftOrder, filterBankSize, sampleRate int, upperFreq, lo
 		if centerFreq != leftFreq {
 			leftSlope = heightFreq / float64(centerFreq-leftFreq)
 		}
+		weights := make([]float64, 0, rightFreq-leftFreq)
 		cur := leftFreq + 1
 		for cur < centerFreq {
-			filters[cur*filterBankSize+k] = float64(cur-leftFreq) * leftSlope
+			weights = append(weights, float64(cur-leftFreq)*leftSlope)
 			cur++
 		}
 		if cur == centerFreq {
-			filters[cur*filterBankSize+k] = heightFreq
+			weights = append(weights, heightFreq)
 			cur++
 		}
 		var rightSlope float64
@@ -431,9 +434,10 @@ func createMelFilterBank(fftOrder, filterBankSize, sampleRate int, upperFreq, lo
 			rightSlope = heightFreq / float64(centerFreq-rightFreq)
 		}
 		for cur < rightFreq {
-			filters[cur*filterBankSize+k] = float64(cur-rightFreq) * rightSlope
+			weights = append(weights, float64(cur-rightFreq)*rightSlope)
 			cur++
 		}
+		filters[k] = melFilter{firstBin: leftFreq + 1, weights: weights}
 	}
 	return filters
 }

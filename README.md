@@ -1,112 +1,105 @@
 ![Dido](./assets/dido_banner_animated.svg)
 
-A Go port of the [aeneas](https://github.com/readbeyond/aeneas) forced
-audio/text alignment library — pure Go core, espeak-ng for synthesis,
-FFmpeg for audio decode. Maintained by
-[Digital Bible Society](https://github.com/digitalbiblesociety).
+Dido aligns a transcript with an audio recording and writes a start and end time
+for each text fragment. Digital Bible Society maintains this Go port of the
+[aeneas forced alignment library](https://github.com/readbeyond/aeneas).
 
-- Multi-level alignment supported (`task_granularity=2|3` for mplain /
-  munparsed input): paragraph → sentence → phrase → word, each level aligned
-  independently within its parent's audio window.
-- Automatic transliteration for languages without an espeak-ng voice:
-  when a fragment's language falls back to English AND its text is in
-  a non-Latin script (Greek, Hebrew, Devanagari, Syriac, …), the text
-  is romanised before synthesis so the timestamps stay accurate. Toggle
-  with `tts_auto_transliterate=false`. Powered by
-  [digitalbiblesociety/transliterate](https://github.com/digitalbiblesociety/transliterate).
+## Build and run
 
-```
+Build the CLI with Go 1.26 or later. Install `espeak-ng` for speech synthesis.
+Dido reads mono 16-bit PCM WAV files directly at the target sample rate
+(16 kHz by default). Install FFmpeg to decode other formats or resample audio.
+
+```sh
 go build -o dido ./cmd/dido
+```
 
+For example, put one English text fragment per line in `text.txt`. This command
+aligns the lines with `audio.wav` and writes an SRT subtitle file.
+
+```sh
 ./dido audio.wav text.txt \
   "task_language=eng|is_text_type=plain|os_task_file_format=srt" \
   output.srt
 ```
 
-Run `./dido --help` for the full list of config keys and output formats.
+Set `task_language` for each task. Run `./dido --help` for common settings and
+supported output formats.
+
+## Alignment options
+
+- For `mplain` and `munparsed` input, Dido aligns paragraphs by default.
+  Set `task_granularity=2` to align sentences within each paragraph.
+  Set `task_granularity=3` to also align phrases and words.
+- When a language uses the fallback English voice, Dido transliterates supported
+  non-Latin scripts before synthesis. Set `tts_auto_transliterate=false` to
+  disable this for a task. See the
+  [transliteration library](https://github.com/digitalbiblesociety/transliterate).
 
 ## Batch mode
 
-Align many tasks from a single JSON file (the schema matches SIL
-go-aeneas / SAB's `AeneasTask`; both a bare array and `{"tasks":[…]}`
-are accepted):
+Run multiple alignment tasks from one JSON file. Dido accepts the
+`AeneasTask` format used by SIL go-aeneas and Scripture App Builder.
+Use an array of tasks or an object with a `tasks` array.
 
+```json
+[
+  {
+    "description": "Chapter 1",
+    "audioFilename": "audio.wav",
+    "phraseFilename": "text.txt",
+    "parameters": "task_language=eng|os_task_file_format=srt",
+    "outputFilename": "output.srt"
+  }
+]
 ```
+
+```sh
 ./dido --batch tasks.json
 ```
 
-Each task has the fields `description`, `audioFilename`, `phraseFilename`,
-`parameters`, `outputFilename`. The first error aborts the rest of the
-queue.
+Dido continues after a task fails and returns a nonzero exit code if any task failed.
 
-## Environment
+## Environment variables
 
-- `DIDO_ESPEAK_NG_PATH` — espeak-ng binary (overridable per-task with `tts_path`).
-- `DIDO_TTS_WORKERS` — cap on parallel TTS subprocesses (0 = NumCPU).
-- `DIDO_BATCH_WORKERS` — parallel tasks in `--batch` mode (default 2; each
-  task already fans MFCC/DTW across NumCPU).
+| Variable | Purpose |
+| --- | --- |
+| `DIDO_ESPEAK_NG_PATH` | Path to `espeak-ng`. The per-task `tts_path` setting takes precedence. |
+| `DIDO_TTS_WORKERS` | Maximum number of speech synthesis processes per task. Defaults to the number of logical CPUs. |
+| `DIDO_BATCH_WORKERS` | Maximum number of concurrent batch tasks. Defaults to two, or one on a single logical CPU. |
 
-## Requirements
+## Development
 
-- **Go ≥ 1.26**
-- **espeak-ng** on `PATH` for TTS synthesis. Override per-task with the
-  `tts_path` config key, or globally with the `DIDO_ESPEAK_NG_PATH`
-  env var.
-- **ffmpeg** on `PATH` for audio decoding. Mono PCM 16-bit WAV at the
-  target sample rate (16 kHz by default) is read directly without going
-  through ffmpeg, so a WAV-only pipeline doesn't need it.
-- **Python aeneas** is only required for the parity tests and the
-  `parity-report` tool — never at runtime.
-
-## Build
-
-```
+```sh
 go build ./...
-```
-
-Or just the CLI:
-
-```
-go build -o dido ./cmd/dido
-./dido --help
-```
-
-## Test
-
-The standard suite is fast and self-contained:
-
-```
 go test ./...
 ```
 
-The `internal/parity` package additionally compares each numeric stage
-to the upstream Python implementation. It's skipped automatically if
-Python or aeneas isn't importable.
+The test suite skips comparisons with Python aeneas when it is unavailable.
+With aeneas installed, use these commands to run the comparisons and
+regenerate the [parity report](docs/PARITY_REPORT.md).
 
-```
-# Compare Go vs Python on the standard fixtures (skips when Python aeneas
-# is unavailable):
+```sh
 go test ./internal/parity/
-
-# Regenerate the cross-implementation summary table:
-go run ./cmd/parity-report   # writes docs/PARITY_REPORT.md
+go run ./cmd/parity-report
 ```
 
-End-to-end alignment parity on a real-world corpus (KJV-Scorby Psalms —
-150 chapters, ~4.3 h of audio) runs as a Go benchmark. Point it at a
-fixtures directory holding `wav/001.wav … 150.wav` and
-`text/001.txt … 150.txt`:
+The KJV-Scorby Psalms benchmark covers 150 chapters, about 4.3 hours of audio.
+Place the mono 16 kHz recordings in `wav/` and the transcripts in `text/`,
+with one verse per line. Number the file pairs from `001.wav` and `001.txt`
+through `150.wav` and `150.txt`.
 
-```
+```sh
 PSALMS_PARITY_DIR=/path/to/fixtures \
-  go test -run x -bench BenchmarkPsalmsBook ./internal/parity/
+  go test -run '^$' -bench BenchmarkPsalmsBook -benchtime=1x -timeout=2h ./internal/parity/
 ```
-
 
 ## License
 
-[AGPL v3](LICENSE).
+[GNU Affero General Public License, version 3](LICENSE)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/digitalbiblesociety/dido/refs/heads/main/assets/dbs-logo-half.svg" />
+  <a href="https://github.com/digitalbiblesociety">
+    <img src="./assets/dbs-logo-half.svg" alt="Digital Bible Society" />
+  </a>
 </p>
